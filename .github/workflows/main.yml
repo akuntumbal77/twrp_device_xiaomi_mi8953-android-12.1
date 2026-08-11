@@ -1,0 +1,264 @@
+name: twrp-vince-android12.1
+
+on:
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: insightsengineering/disk-space-reclaimer@v1
+        with:
+          tools-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: true
+          docker-images: true
+          
+      - name: Free Disk Space
+        uses: endersonmenezes/free-disk-space@v3
+        with:
+          remove_android: true
+          remove_dotnet: true
+          remove_haskell: true
+          remove_tool_cache: true
+          remove_swap: true
+          remove_packages: "azure-cli google-cloud-cli microsoft-edge-stable google-chrome-stable firefox postgresql* temurin-* *llvm* mysql* dotnet-sdk-*"
+          remove_packages_one_command: true
+          remove_folders: "/usr/share/swift /usr/share/miniconda /usr/share/az* /usr/local/lib/node_modules /usr/local/share/chromium /usr/local/share/powershell /usr/local/julia /usr/local/aws-cli /usr/local/aws-sam-cli /usr/share/gradle"
+          rm_cmd: "rm"
+          rmz_version: "3.1.1"
+          testing: false
+
+      - name: Set Swap Space
+        uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 8
+
+      - name: Checkout Device Tree (Current Repo)
+        uses: actions/checkout@v4
+        with:
+          path: workspace_device
+
+      - name: Notify Telegram - Build Started
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          BUILD_DATE=$(date +"%Y-%m-%d %H:%M:%S UTC")
+          curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TG_CHAT_ID}" \
+            -d parse_mode="Markdown" \
+            -d text="🔨 *TWRP Build Started*
+            📱 *Device:* Mi8953 (vince)
+            🌿 *Branch:* android-12.1
+            🕒 *Time:* ${BUILD_DATE}
+            🔗 [GitHub Actions](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+
+      - name: Install Packages
+        run: |
+          sudo apt-get update -y 2>&1 | tee -a /tmp/full_build.log
+          sudo apt-get install -y --no-install-recommends \
+            git curl wget zip unzip cpio bzip2 zstd lzop \
+            make python3 bc flex bison gperf gawk \
+            libxml2-utils xsltproc libssl-dev \
+            build-essential ccache 2>&1 | tee -a /tmp/full_build.log
+
+      - name: Setup Repo Tool
+        run: |
+          git config --global user.name "RahmatSobrian"
+          git config --global user.email "build@relife.local"
+          git config --global color.ui false
+          mkdir -p ~/bin
+          curl -o ~/bin/repo https://storage.googleapis.com/git-repo-downloads/repo
+          chmod a+x ~/bin/repo
+          echo "$HOME/bin" >> $GITHUB_PATH
+
+      - name: Notify Telegram - Syncing Sources
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TG_CHAT_ID}" \
+            -d parse_mode="Markdown" \
+            -d text="🔄 *Syncing TWRP Sources...*
+            📦 Manifest: minimal-manifest-twrp (twrp-12.1)
+            ⚙️ Harap tunggu..."
+
+      - name: Init & Sync TWRP Manifest
+        run: |
+          mkdir -p twrp
+          cd twrp
+
+          repo init \
+            --depth=1 \
+            --groups=default,-mips,-x86,-darwin \
+            -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git \
+            -b twrp-12.1 \
+            2>&1 | tee -a /tmp/full_build.log
+
+          repo sync \
+            -j$(nproc --all) \
+            --force-sync \
+            --no-clone-bundle \
+            --no-tags \
+            --optimized-fetch \
+            --prune \
+            2>&1 | tee -a /tmp/full_build.log
+
+          rm -rf .repo
+          df -h | tee -a /tmp/full_build.log
+
+      - name: Place Device Tree to TWRP Source
+        run: |
+          mkdir -p twrp/device/xiaomi/vince
+          # Pindahkan isi repo device tree yang di-checkout ke folder tujuan build
+          cp -r workspace_device/. twrp/device/xiaomi/vince/
+          # Hapus folder .git bawaan workspace luar jika tidak diperlukan di dalam source tree
+          rm -rf twrp/device/xiaomi/vince/.git
+
+      - name: Notify Telegram - Compiling
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TG_CHAT_ID}" \
+            -d parse_mode="Markdown" \
+            -d text="⚙️ *Compiling TWRP...*
+            📱 *Target:* twrp_vince-eng
+            🧵 *Threads:* $(nproc --all) cores
+            🔨 Build sedang berjalan, harap tunggu..."
+
+      - name: Start Build (with log)
+        working-directory: twrp
+        env:
+          KBUILD_BUILD_USER: "RahmatSobrian"
+          KBUILD_BUILD_HOST: "ReLIFE"
+        run: |
+          mkdir -p logs
+          export ALLOW_MISSING_DEPENDENCIES=true
+          export LC_ALL=C
+
+          set +e
+          . build/envsetup.sh
+          set -e
+
+          if ! type lunch &>/dev/null; then
+            echo "❌ lunch not found" | tee -a /tmp/full_build.log
+            exit 1
+          fi
+
+          lunch twrp_vince-eng
+          if [ $? -ne 0 ]; then
+            echo "❌ lunch failed" | tee -a /tmp/full_build.log
+            exit 1
+          fi
+
+          echo "TARGET_PRODUCT=$TARGET_PRODUCT" | tee -a /tmp/full_build.log
+          echo "TARGET_DEVICE=$TARGET_DEVICE" | tee -a /tmp/full_build.log
+
+          if [ "$TARGET_PRODUCT" != "twrp_vince" ]; then
+            echo "❌ TARGET_PRODUCT salah: $TARGET_PRODUCT" | tee -a /tmp/full_build.log
+            exit 1
+          fi
+
+          mka -j$(nproc --all) recoveryimage 2>&1 | tee logs/build.txt | tee -a /tmp/full_build.log
+
+      - name: Upload Build Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: twrp/logs/build.txt
+
+      - name: Upload recovery.img
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: twrp-vince-recovery
+          path: twrp/out/target/product/vince/recovery.img
+
+      - name: Upload TWRP zip
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: twrp-vince-zip
+          path: twrp/out/target/product/vince/twrp*.zip
+        continue-on-error: true
+
+      - name: Notify Telegram - Build Success
+        if: success()
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          BUILD_DATE=$(date +"%Y-%m-%d %H:%M:%S UTC")
+          IMG_SIZE=$(du -sh twrp/out/target/product/vince/recovery.img 2>/dev/null | cut -f1 || echo "N/A")
+          curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TG_CHAT_ID}" \
+            -d parse_mode="Markdown" \
+            -d text="✅ *TWRP Build Sukses!*
+            📱 *Device:* Xiaomi Redmi 5 Plus (vince)
+            🌿 *Branch:* android-12.1
+            📦 *Image Size:* ${IMG_SIZE}
+            🕒 *Selesai:* ${BUILD_DATE}
+            📥 Artifacts: \`recovery.img\` • \`twrp-*.zip\` • \`build.txt\`
+            🔗 [Download](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            🎉 *TWRP for vince berhasil di-build!*"
+
+      - name: Upload Full Log to Telegram on Failure
+        if: failure()
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          mkdir -p twrp/logs
+          cat /tmp/full_build.log >> twrp/logs/build.txt 2>/dev/null || true
+
+          LOG_FILE="twrp/logs/build.txt"
+          if [ ! -f "$LOG_FILE" ]; then
+            LOG_FILE="/tmp/full_build.log"
+          fi
+
+          if [ -f "$LOG_FILE" ]; then
+            FILE_SIZE=$(du -m "$LOG_FILE" | cut -f1)
+            if [ "$FILE_SIZE" -gt 45 ]; then
+              gzip -k "$LOG_FILE"
+              curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendDocument" \
+                -F chat_id="${TG_CHAT_ID}" \
+                -F document=@"${LOG_FILE}.gz" \
+                -F caption="📄 Full build log (compressed) - TWRP vince (FAILED)"
+            else
+              curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendDocument" \
+                -F chat_id="${TG_CHAT_ID}" \
+                -F document=@"${LOG_FILE}" \
+                -F caption="📄 Full build log - TWRP vince (FAILED)"
+            fi
+          fi
+
+      - name: Notify Telegram - Build Failed
+        if: failure()
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          BUILD_DATE=$(date +"%Y-%m-%d %H:%M:%S UTC")
+          curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TG_CHAT_ID}" \
+            -d parse_mode="Markdown" \
+            -d text="❌ *TWRP Build GAGAL!*
+            📱 *Device:* Xiaomi Redmi 5 Plus (vince)
+            🌿 *Branch:* android-12.1
+            🕒 *Waktu:* ${BUILD_DATE}
+            📄 Full log sudah dikirim di atas.
+            🔗 [Lihat Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
