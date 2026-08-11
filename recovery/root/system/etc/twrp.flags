@@ -1,0 +1,15 @@
+# mount point   fstype  device                      device2                     flags
+#
+# NOTE: this is the static base, in TWRP's own fstab format. /data, /metadata
+# and the super/super_cust display entries are appended at boot time by
+# system/bin/merge-fstab.sh (see recovery.fstab for the retrofit-dynamic
+# detection logic).
+
+/boot           emmc    /dev/block/bootdevice/by-name/boot
+/recovery       emmc    /dev/block/bootdevice/by-name/recovery      flags=backup=1
+/cache          ext4    /dev/block/bootdevice/by-name/cache
+/misc           emmc    /dev/block/bootdevice/by-name/misc
+
+# Removable storage
+/external_sd    auto    /dev/block/mmcblk1p1                                        flags=display="MicroSD";storage;wipeingui;removable
+/usb_otg        auto    /dev/block/sda1                          /dev/block/sda     flags=display="USB OTG";storage;wipeingui;removable

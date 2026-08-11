@@ -1,0 +1,14 @@
+# Fstab
+# NOTE: builds the final /system/etc/recovery.fstab and /system/etc/twrp.flags
+# from the static base + the fbev2/fde + dynamic/nondynpart fragments,
+# detecting at runtime whether this board booted the retrofit-dynamic
+# (mi8953_dynpart) super partition or the legacy static "cust" partition.
+on init
+    exec u:r:recovery:s0 -- /system/bin/merge-fstab.sh
+
+# HVDCP
+service hvdcp_opti /system/bin/hvdcp_opti
+    user root
+    group root
+    disabled
+    seclabel u:r:recovery:s0
