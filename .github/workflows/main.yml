@@ -1,4 +1,4 @@
-name: twrp-vince-android12.1
+name: twrp-mi8953-android12.1
 
 on:
   workflow_dispatch:
@@ -58,7 +58,7 @@ jobs:
             -d chat_id="${TG_CHAT_ID}" \
             -d parse_mode="Markdown" \
             -d text="🔨 *TWRP Build Started*
-            📱 *Device:* Mi8953 (vince)
+            📱 *Device:* Xiaomi Redmi 5 Plus (mi8953)
             🌿 *Branch:* android-12.1
             🕒 *Time:* ${BUILD_DATE}
             🔗 [GitHub Actions](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
@@ -120,11 +120,13 @@ jobs:
 
       - name: Place Device Tree to TWRP Source
         run: |
-          mkdir -p twrp/device/xiaomi/vince
-          # Pindahkan isi repo device tree yang di-checkout ke folder tujuan build
-          cp -r workspace_device/. twrp/device/xiaomi/vince/
-          # Hapus folder .git bawaan workspace luar jika tidak diperlukan di dalam source tree
-          rm -rf twrp/device/xiaomi/vince/.git
+          # Hapus jaga-jaga kalau manifest mendownload folder mi8953 secara otomatis
+          rm -rf twrp/device/xiaomi/mi8953
+          
+          # Buat direktori tujuan dengan codename mi8953
+          mkdir -p twrp/device/xiaomi/mi8953
+          cp -r workspace_device/. twrp/device/xiaomi/mi8953/
+          rm -rf twrp/device/xiaomi/mi8953/.git
 
       - name: Notify Telegram - Compiling
         env:
@@ -135,7 +137,7 @@ jobs:
             -d chat_id="${TG_CHAT_ID}" \
             -d parse_mode="Markdown" \
             -d text="⚙️ *Compiling TWRP...*
-            📱 *Target:* twrp_vince-eng
+            📱 *Target:* twrp_mi8953-eng
             🧵 *Threads:* $(nproc --all) cores
             🔨 Build sedang berjalan, harap tunggu..."
 
@@ -158,7 +160,8 @@ jobs:
             exit 1
           fi
 
-          lunch twrp_vince-eng
+          # Gunakan codename mi8953
+          lunch twrp_mi8953-eng
           if [ $? -ne 0 ]; then
             echo "❌ lunch failed" | tee -a /tmp/full_build.log
             exit 1
@@ -167,7 +170,7 @@ jobs:
           echo "TARGET_PRODUCT=$TARGET_PRODUCT" | tee -a /tmp/full_build.log
           echo "TARGET_DEVICE=$TARGET_DEVICE" | tee -a /tmp/full_build.log
 
-          if [ "$TARGET_PRODUCT" != "twrp_vince" ]; then
+          if [ "$TARGET_PRODUCT" != "twrp_mi8953" ]; then
             echo "❌ TARGET_PRODUCT salah: $TARGET_PRODUCT" | tee -a /tmp/full_build.log
             exit 1
           fi
@@ -185,15 +188,15 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: twrp-vince-recovery
-          path: twrp/out/target/product/vince/recovery.img
+          name: twrp-mi8953-recovery
+          path: twrp/out/target/product/mi8953/recovery.img
 
       - name: Upload TWRP zip
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: twrp-vince-zip
-          path: twrp/out/target/product/vince/twrp*.zip
+          name: twrp-mi8953-zip
+          path: twrp/out/target/product/mi8953/twrp*.zip
         continue-on-error: true
 
       - name: Notify Telegram - Build Success
@@ -203,18 +206,18 @@ jobs:
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
           BUILD_DATE=$(date +"%Y-%m-%d %H:%M:%S UTC")
-          IMG_SIZE=$(du -sh twrp/out/target/product/vince/recovery.img 2>/dev/null | cut -f1 || echo "N/A")
+          IMG_SIZE=$(du -sh twrp/out/target/product/mi8953/recovery.img 2>/dev/null | cut -f1 || echo "N/A")
           curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TG_CHAT_ID}" \
             -d parse_mode="Markdown" \
             -d text="✅ *TWRP Build Sukses!*
-            📱 *Device:* Xiaomi Redmi 5 Plus (vince)
+            📱 *Device:* Xiaomi Redmi 5 Plus (mi8953)
             🌿 *Branch:* android-12.1
             📦 *Image Size:* ${IMG_SIZE}
             🕒 *Selesai:* ${BUILD_DATE}
             📥 Artifacts: \`recovery.img\` • \`twrp-*.zip\` • \`build.txt\`
             🔗 [Download](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-            🎉 *TWRP for vince berhasil di-build!*"
+            🎉 *TWRP dynamic partition untuk mi8953 berhasil di-build!*"
 
       - name: Upload Full Log to Telegram on Failure
         if: failure()
@@ -237,12 +240,12 @@ jobs:
               curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendDocument" \
                 -F chat_id="${TG_CHAT_ID}" \
                 -F document=@"${LOG_FILE}.gz" \
-                -F caption="📄 Full build log (compressed) - TWRP vince (FAILED)"
+                -F caption="📄 Full build log (compressed) - TWRP mi8953 (FAILED)"
             else
               curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendDocument" \
                 -F chat_id="${TG_CHAT_ID}" \
                 -F document=@"${LOG_FILE}" \
-                -F caption="📄 Full build log - TWRP vince (FAILED)"
+                -F caption="📄 Full build log - TWRP mi8953 (FAILED)"
             fi
           fi
 
@@ -257,7 +260,7 @@ jobs:
             -d chat_id="${TG_CHAT_ID}" \
             -d parse_mode="Markdown" \
             -d text="❌ *TWRP Build GAGAL!*
-            📱 *Device:* Xiaomi Redmi 5 Plus (vince)
+            📱 *Device:* Xiaomi Redmi 5 Plus (mi8953)
             🌿 *Branch:* android-12.1
             🕒 *Waktu:* ${BUILD_DATE}
             📄 Full log sudah dikirim di atas.
